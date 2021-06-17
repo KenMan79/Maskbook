@@ -2,13 +2,17 @@ import { Buffer } from 'buffer'
 import scrypt from 'scrypt-js'
 import Web3Utils from 'web3-utils'
 import type { CryptoKeyStore } from './types'
-import { assertKeyStore, parseKeyStore } from './utils'
+import { assertKeyStore } from './utils'
 
 export async function fromKeyStore(input: string, password: Uint8Array) {
-    const store = parseKeyStore(input)
+    let store: object
+    try {
+        store = JSON.parse(input)
+    } catch {
+        throw new Error('We donot support non-json format keystore!')
+    }
     assertKeyStore(store)
-    const { crypto } = store
-    const derivedKey = await makeDerivedKey(crypto, password)
+    const derivedKey = await makeDerivedKey(store.crypto, password)
     if (!verifyKeyDerivation(store.crypto, derivedKey)) {
         throw new Error('Key derivation failed - possibly wrong passphrase')
     }
@@ -24,9 +28,15 @@ export async function fromKeyStore(input: string, password: Uint8Array) {
 export async function decrypt(cipher: string, derivedKey: Uint8Array, ciphertext: Uint8Array, iv: Uint8Array) {
     const name = cipher === 'aes-128-ctr' ? 'AES-CTR' : 'AES-CBC'
     derivedKey = derivedKey.slice(0, 16)
-    const key = await crypto.subtle.importKey('raw', derivedKey, { name, length: 128 }, false, ['decrypt'])
-    const algorithm = cipher === 'aes-128-ctr' ? { name, counter: iv, length: 128 } : { name, iv }
-    const seed = await crypto.subtle.decrypt(algorithm, key, ciphertext)
+    const length = 128
+    const key = await crypto.subtle.importKey('raw', derivedKey, { name, length }, false, ['decrypt'])
+    const aes_ctr_params: AesCtrParams = { name, counter: iv, length }
+    const aes_cbc_params: AesCbcParams = { name, iv }
+    const seed = await crypto.subtle.decrypt(
+        cipher === 'aes-128-ctr' ? aes_ctr_params : aes_cbc_params,
+        key,
+        ciphertext,
+    )
     return Buffer.from(seed).toString('hex')
 }
 
@@ -43,12 +53,9 @@ async function makeDerivedKey(keystore: CryptoKeyStore, password: Uint8Array) {
         const { n, r, p, dklen } = keystore.kdfparams
         return scrypt.scrypt(password, salt, n, r, p, dklen)
     } else if (keystore.kdf === 'pbkdf2') {
-        const { prf, c } = keystore.kdfparams
-        if (prf !== 'hmac-sha256') {
-            throw new Error('Unsupported parameters to PBKDF2')
-        }
+        const iterations = keystore.kdfparams.c
         const key = await crypto.subtle.importKey('raw', password, { name: 'PBKDF2' }, false, ['deriveBits'])
-        const params: Pbkdf2Params = { name: 'PBKDF2', salt, iterations: c, hash: 'SHA-256' }
+        const params: Pbkdf2Params = { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }
         return new Uint8Array(await crypto.subtle.deriveBits(params, key, 256))
     }
     throw new Error('Unsupport key derivation scheme')
