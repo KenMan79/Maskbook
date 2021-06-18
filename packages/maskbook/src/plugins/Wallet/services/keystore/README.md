@@ -12,7 +12,9 @@ issue: <https://github.com/DimensionDev/Maskbook/issues/2661>
 
 ## Backup Wallet as Key Store format (Workflow)
 
-issue: TODO
+issue: <https://github.com/DimensionDev/Maskbook/issues/2662>
+
+Inactive rationale: No mainstream wallet implementation
 
 ## References
 
