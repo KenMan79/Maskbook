@@ -1,31 +1,22 @@
 import { Buffer } from 'buffer'
 import scrypt from 'scrypt-js'
-import Web3Utils from 'web3-utils'
 import type { CryptoKeyStore } from './types'
-import { assertKeyStore } from './utils'
+import { assertKeyDerivation, loadKeyStore } from './utils'
 
 export async function fromKeyStore(input: string, password: Uint8Array) {
-    let store: object
-    try {
-        store = JSON.parse(input)
-    } catch {
-        throw new Error('We donot support non-json format keystore!')
-    }
-    assertKeyStore(store)
-    const derivedKey = await makeDerivedKey(store.crypto, password)
-    if (!verifyKeyDerivation(store.crypto, derivedKey)) {
-        throw new Error('Key derivation failed - possibly wrong passphrase')
-    }
+    const { crypto, address } = loadKeyStore(input)
+    const derivedKey = await makeDerivedKey(crypto, password)
+    assertKeyDerivation(crypto, derivedKey)
     const seed = await decrypt(
-        store.crypto.cipher,
+        crypto.cipher,
         derivedKey,
-        Buffer.from(store.crypto.ciphertext, 'hex'),
-        Buffer.from(store.crypto.cipherparams.iv, 'hex'),
+        Buffer.from(crypto.ciphertext, 'hex'),
+        Buffer.from(crypto.cipherparams.iv, 'hex'),
     )
-    return { address: `0x${store.address}`, privateKey: `0x${seed}` } as const
+    return { address: `0x${address}`, privateKey: `0x${seed}` } as const
 }
 
-export async function decrypt(cipher: string, derivedKey: Uint8Array, ciphertext: Uint8Array, iv: Uint8Array) {
+async function decrypt(cipher: string, derivedKey: Uint8Array, cipherText: Uint8Array, iv: Uint8Array) {
     const name = cipher === 'aes-128-ctr' ? 'AES-CTR' : 'AES-CBC'
     derivedKey = derivedKey.slice(0, 16)
     const length = 128
@@ -35,16 +26,9 @@ export async function decrypt(cipher: string, derivedKey: Uint8Array, ciphertext
     const seed = await crypto.subtle.decrypt(
         cipher === 'aes-128-ctr' ? aes_ctr_params : aes_cbc_params,
         key,
-        ciphertext,
+        cipherText,
     )
     return Buffer.from(seed).toString('hex')
-}
-
-async function verifyKeyDerivation(keystore: CryptoKeyStore, derivedKey: Uint8Array) {
-    const cipherText = Buffer.from(keystore.ciphertext, 'hex')
-    const buf = Buffer.concat([Buffer.from(derivedKey.slice(16, 32)), cipherText])
-    const mac = Web3Utils.sha3(`0x${buf.toString('hex')}`)
-    return mac === `0x${keystore.mac}`
 }
 
 async function makeDerivedKey(keystore: CryptoKeyStore, password: Uint8Array) {
