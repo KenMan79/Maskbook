@@ -1,5 +1,5 @@
 import { TextField } from '@material-ui/core'
-import { useState } from 'react'
+import { ChangeEvent, useCallback, useState } from 'react'
 import { UserPlus } from 'react-feather'
 import { useHistory } from 'react-router-dom'
 import { WALLET_OR_PERSONA_NAME_MAX_LEN, useI18N, checkInputLengthExceed } from '../../../../utils'
@@ -20,6 +20,13 @@ export function DashboardPersonaCreateDialog(props: WrappedDialogProps) {
             `${DashboardRoute.Setup}/${SetupStep.ConnectNetwork}?identifier=${encodeURIComponent(persona.toText())}`,
         )
     }
+
+    const onChange = useCallback((ev: ChangeEvent<HTMLInputElement>) => {
+        if (ev.currentTarget.value.length > WALLET_OR_PERSONA_NAME_MAX_LEN) {
+            return
+        }
+        setName(ev.currentTarget.value)
+    }, [])
 
     return (
         <DashboardDialogCore fullScreen={false} {...props}>
@@ -45,7 +52,7 @@ export function DashboardPersonaCreateDialog(props: WrappedDialogProps) {
                                 required
                                 label={t('name')}
                                 value={name}
-                                onChange={(e) => setName(e.target.value)}
+                                onChange={onChange}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault()
